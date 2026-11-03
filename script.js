@@ -71,14 +71,20 @@
     hintEls.forEach(el => el.classList.remove('revealed'));
     document.querySelectorAll('.modes .btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
     document.body.classList.toggle('quote-mode', m === 'quote');
-    secret = m === 'daily' ? dailyHero() : heroes[Math.floor(Math.random() * heroes.length)];
+    const pool = m === 'zoom' ? heroes.filter(h => h.image) : heroes; // zoom needs a portrait
+    secret = m === 'daily' ? dailyHero() : pool[Math.floor(Math.random() * pool.length)];
     refreshHints();
+    $('hero-bg').classList.remove('show');
+    document.body.classList.toggle('zoom-mode', m === 'zoom');
+    $('zoom-box').hidden = m !== 'zoom';
+    if (m === 'zoom') setupZoom();
     const banner = $('quote-banner');
     banner.hidden = m !== 'quote';
     if (m === 'quote') banner.textContent = '\u201c' + secret.quote + '\u201d';
     setStatus({ daily: 'Daily hero #' + dayNumber() + ' \u2014 make a guess.',
                 random: 'Random hero \u2014 make a guess.',
-                quote: 'Who said this? Make a guess.' }[m]);
+                quote: 'Who said this? Make a guess.',
+                zoom: 'Who is this? Every miss zooms out.' }[m]);
 
     if (m === 'daily') { // restore today's progress
       const save = store.get('owdle-save', null);
@@ -230,6 +236,7 @@
     refreshHints();
     if (hero.name === secret.name) finish(restoring);
     else setStatus('Guesses: ' + history.length);
+    updateZoom();
     if (mode === 'daily' && !restoring) {
       store.set('owdle-save', { date: todayKey(), guesses: history.map(h => h.name) });
     }
@@ -247,7 +254,8 @@
       if (history !== g) return;
       setStatus('Correct! ' + secret.name + ' in ' + n + (n === 1 ? ' guess.' : ' guesses.'), 'win');
     };
-    if (restoring) show(); else setTimeout(() => { if (history === g) { show(); celebrate(); } }, delay);
+    if (restoring) { show(); revealHero(); }
+    else setTimeout(() => { if (history === g) { show(); celebrate(); revealHero(); } }, delay);
     if (mode === 'daily' && !restoring) recordWin(n);
     if (!restoring) setTimeout(() => { if (history === g) openModal(); }, delay + 900);
   }
@@ -304,6 +312,17 @@
     return img;
   }
 
+  const svg = inner => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' + inner + '</svg>';
+  const ROLE_ICONS = {
+    Tank: svg('<path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z" fill="currentColor"/>'),
+    Damage: svg('<g fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><path d="M12 1v6M12 17v6M1 12h6M17 12h6"/></g>'),
+    Support: svg('<path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="currentColor"/>')
+  };
+  const FLAGS = { Egypt: 'eg', China: 'cn', USA: 'us', 'United States': 'us', Haiti: 'ht', Sweden: 'se', 'South Korea': 'kr',
+    Italy: 'it', Nigeria: 'ng', Switzerland: 'ch', Turkey: 'tr', Denmark: 'dk', Japan: 'jp', Scotland: 'gb-sct',
+    Australia: 'au', Peru: 'pe', Brazil: 'br', Samoa: 'ws', Ireland: 'ie', Netherlands: 'nl', Canada: 'ca', Mexico: 'mx',
+    India: 'in', Thailand: 'th', France: 'fr', 'United Kingdom': 'gb', England: 'gb-eng', Russia: 'ru', Spain: 'es',
+    Nepal: 'np', Germany: 'de' };
   const LABELS = ['Hero', 'Gender', 'Role', 'Species', 'Origin', 'Affiliation', 'Health', 'Year'];
 
   function addRow(hero, animate) {
@@ -320,6 +339,13 @@
       tile.setAttribute('aria-label', LABELS[i] + ': ' + t.text + '. ' + tip);
       tile.style.setProperty('--i', i);
       if (t.image) tile.appendChild(makeImg(t.image, 'tile-img'));
+      if (i === 2 && ROLE_ICONS[t.text]) {
+        const ic = document.createElement('span');
+        ic.className = 'role-icon';
+        ic.innerHTML = ROLE_ICONS[t.text]; // static trusted SVG
+        tile.appendChild(ic);
+      }
+      if (i === 4 && FLAGS[t.text]) tile.appendChild(makeImg('https://flagcdn.com/w40/' + FLAGS[t.text] + '.png', 'flag'));
       const span = document.createElement('span');
       span.className = 'txt';
       span.textContent = t.text;
@@ -371,6 +397,9 @@
 
     const result = $('modal-result');
     result.hidden = !gameOver;
+    const ri = $('reveal-img');
+    ri.hidden = !(gameOver && secret.image);
+    if (!ri.hidden) ri.src = secret.image;
     if (gameOver) result.textContent = secret.name + ' \u2014 ' + history.length + (history.length === 1 ? ' guess' : ' guesses');
     $('share-btn').hidden = !gameOver;
     $('share-btn').textContent = 'Copy result';
@@ -391,7 +420,7 @@
     const rows = history.map(h => compare(h).slice(1).map(t =>
       t.arrow ? (t.arrow === '\u2191' ? '\u2b06\ufe0f' : '\u2b07\ufe0f')
         : t.cls === 'correct' ? '\ud83d\udfe9' : t.cls === 'partial' ? '\ud83d\udfe8' : '\ud83d\udfe5').join(''));
-    const title = mode === 'daily' ? 'Overwatchdle #' + dayNumber() : mode === 'quote' ? 'Overwatchdle (quote)' : 'Overwatchdle (random)';
+    const title = mode === 'daily' ? 'Overwatchdle #' + dayNumber() : 'Overwatchdle (' + mode + ')';
     return title + ' \u2014 ' + history.length + (history.length === 1 ? ' guess' : ' guesses') + '\n\n' + rows.join('\n');
   }
 
@@ -469,6 +498,36 @@
       else { ctx.clearRect(0, 0, cv.width, cv.height); cv.hidden = true; }
     })(t0);
   }
+
+  /* ---------- Portrait zoom mode ---------- */
+  function setupZoom() {
+    const img = $('zoom-img');
+    img.src = secret.image;
+    img.style.transformOrigin = (30 + Math.random() * 40) + '% ' + (12 + Math.random() * 28) + '%';
+    updateZoom();
+  }
+  function updateZoom() {
+    if (mode !== 'zoom') return;
+    const scale = gameOver ? 1 : Math.max(1, 9 - history.length * 1.3);
+    $('zoom-img').style.transform = 'scale(' + scale.toFixed(2) + ')';
+  }
+
+  /* ---------- Win reveal ---------- */
+  function revealHero() {
+    const bg = $('hero-bg');
+    if (secret.image) bg.style.backgroundImage = 'url("' + secret.image + '")';
+    bg.classList.add('show');
+  }
+
+  /* ---------- Faction themes ---------- */
+  const themeSel = $('theme-select');
+  function applyTheme(t) {
+    document.documentElement.dataset.theme = t;
+    themeSel.value = t;
+    store.set('owdle-theme', t);
+  }
+  themeSel.addEventListener('change', () => applyTheme(themeSel.value));
+  applyTheme(store.get('owdle-theme', 'overwatch'));
 
   init();
 })();
