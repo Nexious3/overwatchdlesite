@@ -56,6 +56,13 @@ An internet connection is needed for the Google Fonts (Teko, Metrophobic) and fo
 - **Accessibility:** tiles carry symbols (✓ match, ~ close, ✗ miss) so colors aren't the only signal, hover tooltips, and screen-reader labels.
 - **Mobile:** below 700px each guess becomes a labelled card instead of a wide grid.
 
+## More features
+
+- **Flags and role icons:** the Origin tile shows a country flag (loaded from flagcdn.com) and the Role tile shows a shield, crosshair or plus icon. Origins without a real country (Numbani, Mars...) just show text. Add more countries to the `FLAGS` list in `script.js`.
+- **Faction themes:** the theme dropdown switches the accent color (Overwatch, Talon, Junkers, Null Sector) and remembers your choice. Add a theme by copying one of the `html[data-theme=...]` rules in `style.css`.
+- **Zoom mode:** a heavily zoomed piece of the hero's portrait; every wrong guess zooms out. Heroes without an `image` are skipped in this mode.
+- **Win reveal:** on a win, the background fades to a blurred picture of the hero and the results window shows their portrait.
+
 ## Customizing
 
 **Hint unlock thresholds** (`script.js`, top of the hints section):
